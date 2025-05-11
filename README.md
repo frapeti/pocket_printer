@@ -1,16 +1,50 @@
-# pax_printer_app
+# PAX Printer App
 
-A new Flutter project.
+A Flutter application for printing images and QR codes using PAX printers. This app provides a simple and intuitive interface for managing your printing needs.
+
+## Features
+
+- Print images from your device's gallery
+- Generate and print QR codes
+- Simple and user-friendly interface
+- Support for PAX printer devices
+- Image optimization for better print quality
+
+## Requirements
+
+- Flutter SDK ^3.7.2
+- PAX printer device
+- Android or iOS device
+
+## Dependencies
+
+- flutter_pax_printer_utility: ^0.1.4
+- image_picker: ^1.0.7
+- permission_handler: ^11.3.1
 
 ## Getting Started
 
-This project is a starting point for a Flutter application.
+1. Clone the repository
+2. Run `flutter pub get` to install dependencies
+3. Connect your PAX printer device
+4. Run the app using `flutter run`
 
-A few resources to get you started if this is your first Flutter project:
+## Usage
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+1. Launch the app
+2. Select an image from your gallery or generate a QR code
+3. Click the print button to send the content to your PAX printer
+4. Wait for the printing process to complete
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Permissions
+
+The app requires the following permissions:
+- Storage access (for selecting images from gallery)
+
+## Support
+
+For issues and feature requests, please create an issue in the repository.
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
