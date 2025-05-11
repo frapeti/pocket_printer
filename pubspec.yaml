@@ -34,7 +34,10 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
-  flutter_pax_printer_utility: ^0.1.4
+  flutter_pax_printer_utility:
+    git:
+      url: https://github.com/frapeti/flutter_pax_printer_utility.git
+      ref: master
   image_picker: ^1.0.7
   permission_handler: ^11.3.1
 
