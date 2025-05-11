@@ -172,25 +172,21 @@ class _MyHomePageState extends State<MyHomePage> {
       // Set maximum gray level for best quality
       await FlutterPaxPrinterUtility.setGray(4);
 
-      // Print header with better spacing
-      await FlutterPaxPrinterUtility.printStr('\nPRINTING IMAGE\n\n', null);
-      await FlutterPaxPrinterUtility.step(2);
-
       // Read image bytes
       Uint8List bytes = await _imageFile!.readAsBytes();
 
-      // Print the bitmap with delay before and after
+      // Print the bitmap with minimal delay
       print('Printing image...');
       await Future.delayed(const Duration(milliseconds: 300));
       await FlutterPaxPrinterUtility.printBitmap(bytes);
-      await Future.delayed(const Duration(milliseconds: 500));
+      await Future.delayed(const Duration(milliseconds: 300));
 
-      // Add more spacing and start printing
-      await FlutterPaxPrinterUtility.step(200);
+      // Add minimal spacing and start printing
+      await FlutterPaxPrinterUtility.step(50);
       var status = await FlutterPaxPrinterUtility.start();
 
       // Add final delay to ensure complete printing
-      await Future.delayed(const Duration(milliseconds: 1000));
+      await Future.delayed(const Duration(milliseconds: 500));
 
       print('Print status: $status');
       setState(() {
