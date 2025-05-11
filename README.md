@@ -9,12 +9,13 @@ A Flutter application for printing images and QR codes using PAX printers. This 
 - Simple and user-friendly interface
 - Support for PAX printer devices
 - Image optimization for better print quality
+- System-level printing service for Android 6.0+
 
 ## Requirements
 
 - Flutter SDK ^3.7.2
 - PAX printer device
-- Android or iOS device
+- Android 6.0+ or iOS device
 
 ## Dependencies
 
@@ -36,10 +37,19 @@ A Flutter application for printing images and QR codes using PAX printers. This 
 3. Click the print button to send the content to your PAX printer
 4. Wait for the printing process to complete
 
+## Android Print Service
+
+The app includes a system-level print service for Android 6.0 and above. This allows the app to:
+- Appear in the system print menu
+- Handle print jobs from other apps
+- Manage print queue and status
+- Support multiple print formats
+
 ## Permissions
 
 The app requires the following permissions:
 - Storage access (for selecting images from gallery)
+- Print service permission (for Android print service)
 
 ## Support
 
