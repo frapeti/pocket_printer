@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_pax_printer_utility/flutter_pax_printer_utility.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -62,6 +64,45 @@ class _MyHomePageState extends State<MyHomePage> {
   File? _imageFile;
   bool _printing = false;
   String? _status;
+
+  // Definir el canal para comunicarse con el código nativo
+  static const platform = MethodChannel(
+    'com.example.pax_printer_app/shared_image',
+  );
+
+  @override
+  void initState() {
+    super.initState();
+
+    // Verificar si se compartió alguna imagen al iniciar la app
+    _checkForSharedImage();
+  }
+
+  // Método para verificar si hay una imagen compartida
+  Future<void> _checkForSharedImage() async {
+    try {
+      final String? imagePath = await platform.invokeMethod(
+        'getSharedImagePath',
+      );
+      if (imagePath != null && imagePath.isNotEmpty) {
+        _handleSharedImage(imagePath);
+      }
+    } on PlatformException catch (e) {
+      print("Error al obtener la imagen compartida: ${e.message}");
+    }
+  }
+
+  void _handleSharedImage(String path) {
+    setState(() {
+      _imageFile = File(path);
+      _status = 'Imagen recibida lista para imprimir';
+    });
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
+  }
 
   Future<void> _pickImage() async {
     if (Platform.isAndroid) {
@@ -255,27 +296,64 @@ class _MyHomePageState extends State<MyHomePage> {
                   ? Image.file(_imageFile!, height: 200)
                   : const Text('No se ha seleccionado ninguna imagen.'),
               const SizedBox(height: 24),
+              if (_status == 'Imagen recibida lista para imprimir')
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade100,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  padding: const EdgeInsets.all(10),
+                  margin: const EdgeInsets.only(bottom: 16),
+                  child: Column(
+                    children: [
+                      const Text(
+                        '¡Imagen recibida por compartir!',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      ElevatedButton.icon(
+                        onPressed: _printing ? null : _printImage,
+                        icon: const Icon(Icons.print),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.green,
+                          foregroundColor: Colors.white,
+                          minimumSize: const Size.fromHeight(50),
+                        ),
+                        label:
+                            _printing
+                                ? const Text('Imprimiendo...')
+                                : const Text('Imprimir esta imagen ahora'),
+                      ),
+                    ],
+                  ),
+                ),
               ElevatedButton.icon(
                 onPressed: _printing ? null : _pickImage,
                 icon: const Icon(Icons.photo_library),
                 label: const Text('Seleccionar imagen de la galería'),
               ),
               const SizedBox(height: 16),
-              ElevatedButton.icon(
-                onPressed: _printing || _imageFile == null ? null : _printImage,
-                icon: const Icon(Icons.print),
-                label:
-                    _printing
-                        ? const Text('Imprimiendo...')
-                        : const Text('Imprimir imagen'),
-              ),
+              if (_status != 'Imagen recibida lista para imprimir')
+                ElevatedButton.icon(
+                  onPressed:
+                      _printing || _imageFile == null ? null : _printImage,
+                  icon: const Icon(Icons.print),
+                  label:
+                      _printing
+                          ? const Text('Imprimiendo...')
+                          : const Text('Imprimir imagen'),
+                ),
               const SizedBox(height: 16),
               ElevatedButton.icon(
                 onPressed: _printing ? null : _printTestQRCode,
                 icon: const Icon(Icons.qr_code),
                 label: const Text('Imprimir código QR de prueba'),
               ),
-              if (_status != null) ...[
+              if (_status != null &&
+                  _status != 'Imagen recibida lista para imprimir') ...[
                 const SizedBox(height: 16),
                 Text(
                   _status!,
