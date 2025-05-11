@@ -1,21 +1,21 @@
 # PAX Printer App
 
-A Flutter application for printing images and QR codes using PAX printers. This app provides a simple and intuitive interface for managing your printing needs.
+A Flutter application for printing images and QR codes using PAX POSNET A910 printers. This app provides a simple and intuitive interface for managing your printing needs.
 
 ## Features
 
 - Print images from your device's gallery
 - Generate and print QR codes
 - Simple and user-friendly interface
-- Support for PAX printer devices
+- Support for PAX POSNET A910 printer
 - Image optimization for better print quality
 - System-level printing service for Android 6.0+
 
 ## Requirements
 
 - Flutter SDK ^3.7.2
-- PAX printer device
-- Android 6.0+ or iOS device
+- PAX POSNET A910 printer device
+- Android 6.0+ device
 
 ## Dependencies
 
@@ -27,7 +27,7 @@ A Flutter application for printing images and QR codes using PAX printers. This 
 
 1. Clone the repository
 2. Run `flutter pub get` to install dependencies
-3. Connect your PAX printer device
+3. Connect your PAX POSNET A910 printer device
 4. Run the app using `flutter run`
 
 ## Usage
