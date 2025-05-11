@@ -190,7 +190,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
       print('Print status: $status');
       setState(() {
-        _status = 'Image printed successfully!';
+        _status = '¡Imagen impresa correctamente!';
       });
     } catch (e) {
       print('Error printing image: $e');
