@@ -64,6 +64,7 @@ class _MyHomePageState extends State<MyHomePage> {
   File? _imageFile;
   bool _printing = false;
   String? _status;
+  int _grayLevel = 4;
 
   // Definir el canal para comunicarse con el código nativo
   static const platform = MethodChannel(
@@ -170,7 +171,7 @@ class _MyHomePageState extends State<MyHomePage> {
       await FlutterPaxPrinterUtility.spaceSet(0, 10);
 
       // Set maximum gray level for best quality
-      await FlutterPaxPrinterUtility.setGray(4);
+      await FlutterPaxPrinterUtility.setGray(_grayLevel);
 
       // Read image bytes
       Uint8List bytes = await _imageFile!.readAsBytes();
@@ -196,51 +197,6 @@ class _MyHomePageState extends State<MyHomePage> {
       print('Error printing image: $e');
       setState(() {
         _status = 'Image print failed: $e';
-      });
-    } finally {
-      setState(() {
-        _printing = false;
-      });
-    }
-  }
-
-  Future<void> _printTestQRCode() async {
-    setState(() {
-      _printing = true;
-      _status = null;
-    });
-    try {
-      print('Initializing printer...');
-      await FlutterPaxPrinterUtility.init;
-
-      // Set font and spacing like in the example
-      await FlutterPaxPrinterUtility.fontSet(
-        EFontTypeAscii.FONT_24_24,
-        EFontTypeExtCode.FONT_24_24,
-      );
-      await FlutterPaxPrinterUtility.spaceSet(0, 10);
-      await FlutterPaxPrinterUtility.setGray(1);
-
-      // Print header text
-      await FlutterPaxPrinterUtility.printStr('SCAN QR CODE BELOW', null);
-      await FlutterPaxPrinterUtility.printStr('\n\n', null);
-
-      // Print QR code with larger size (512x512 like in example)
-      print('Printing QR code...');
-      await FlutterPaxPrinterUtility.printQRCode('TEST123', 512, 512);
-
-      // Add some spacing and start printing
-      await FlutterPaxPrinterUtility.step(150);
-      var status = await FlutterPaxPrinterUtility.start();
-
-      print('Print status: $status');
-      setState(() {
-        _status = 'Print completed!';
-      });
-    } catch (e) {
-      print('Error during printing: $e');
-      setState(() {
-        _status = 'Print failed: $e';
       });
     } finally {
       setState(() {
@@ -343,22 +299,28 @@ class _MyHomePageState extends State<MyHomePage> {
                           : const Text('Imprimir imagen'),
                 ),
               const SizedBox(height: 16),
-              ElevatedButton.icon(
-                onPressed: _printing ? null : _printTestQRCode,
-                icon: const Icon(Icons.qr_code),
-                label: const Text('Imprimir código QR de prueba'),
+              Text(
+                'Ajustá el nivel de negro para la impresión (más alto = más oscuro, más bajo = más claro)',
+                style: TextStyle(fontSize: 14, color: Colors.black54),
+                textAlign: TextAlign.center,
               ),
-              if (_status != null &&
-                  _status != 'Imagen recibida lista para imprimir') ...[
-                const SizedBox(height: 16),
-                Text(
-                  _status!,
-                  style: TextStyle(
-                    color:
-                        _status!.contains('falló') ? Colors.red : Colors.green,
-                  ),
-                ),
-              ],
+              const SizedBox(height: 8),
+              Slider(
+                value: _grayLevel.toDouble(),
+                min: 0,
+                max: 4,
+                divisions: 4,
+                label: 'Nivel de negro: $_grayLevel',
+                onChanged:
+                    _printing
+                        ? null
+                        : (double value) {
+                          setState(() {
+                            _grayLevel = value.round();
+                          });
+                        },
+              ),
+              const SizedBox(height: 8),
             ],
           ),
         ),
