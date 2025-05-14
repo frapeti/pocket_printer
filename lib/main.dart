@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_pax_printer_utility/flutter_pax_printer_utility.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:image/image.dart' as img;
 
 void main() {
   runApp(const MyApp());
@@ -205,6 +206,116 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
+  // Add a dithering function
+  Uint8List applyDithering(Uint8List imageBytes) {
+    // Decode the image
+    img.Image? image = img.decodeImage(imageBytes);
+    if (image == null) {
+      print('Failed to decode image');
+      return imageBytes;
+    }
+
+    // Apply Floyd-Steinberg dithering
+    for (int y = 0; y < image.height; y++) {
+      for (int x = 0; x < image.width; x++) {
+        int oldPixel = img.getLuminance(image.getPixel(x, y));
+        int newPixel = oldPixel > 128 ? 255 : 0;
+        int quantError = oldPixel - newPixel;
+
+        image.setPixel(x, y, img.getColor(newPixel, newPixel, newPixel));
+
+        if (x + 1 < image.width) {
+          int neighbor = img.getLuminance(image.getPixel(x + 1, y));
+          neighbor = (neighbor + (quantError * 7) / 16).clamp(0, 255).toInt();
+          image.setPixel(x + 1, y, img.getColor(neighbor, neighbor, neighbor));
+        }
+        if (y + 1 < image.height) {
+          if (x > 0) {
+            int neighbor = img.getLuminance(image.getPixel(x - 1, y + 1));
+            neighbor = (neighbor + (quantError * 3) / 16).clamp(0, 255).toInt();
+            image.setPixel(
+              x - 1,
+              y + 1,
+              img.getColor(neighbor, neighbor, neighbor),
+            );
+          }
+          int neighbor = img.getLuminance(image.getPixel(x, y + 1));
+          neighbor = (neighbor + (quantError * 5) / 16).clamp(0, 255).toInt();
+          image.setPixel(x, y + 1, img.getColor(neighbor, neighbor, neighbor));
+          if (x + 1 < image.width) {
+            int neighbor = img.getLuminance(image.getPixel(x + 1, y + 1));
+            neighbor = (neighbor + (quantError * 1) / 16).clamp(0, 255).toInt();
+            image.setPixel(
+              x + 1,
+              y + 1,
+              img.getColor(neighbor, neighbor, neighbor),
+            );
+          }
+        }
+      }
+    }
+
+    // Encode the image back to Uint8List
+    return Uint8List.fromList(img.encodePng(image));
+  }
+
+  // Add a new print function for dithering
+  Future<void> _printImageWithDithering() async {
+    if (_imageFile == null) return;
+    setState(() {
+      _printing = true;
+      _status = null;
+    });
+    try {
+      print('Initializing printer with dithering...');
+      await FlutterPaxPrinterUtility.init;
+
+      // Add delay after initialization
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      // Set font and spacing like in the example
+      await FlutterPaxPrinterUtility.fontSet(
+        EFontTypeAscii.FONT_24_24,
+        EFontTypeExtCode.FONT_24_24,
+      );
+      await FlutterPaxPrinterUtility.spaceSet(0, 10);
+
+      // Set maximum gray level for best quality
+      await FlutterPaxPrinterUtility.setGray(_grayLevel);
+
+      // Read image bytes and apply dithering
+      Uint8List bytes = await _imageFile!.readAsBytes();
+      Uint8List ditheredBytes = applyDithering(bytes);
+
+      // Print the bitmap with minimal delay
+      print('Printing image with dithering...');
+      await Future.delayed(const Duration(milliseconds: 300));
+      await FlutterPaxPrinterUtility.printBitmap(ditheredBytes);
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      // Add minimal spacing and start printing
+      await FlutterPaxPrinterUtility.step(50);
+      var status = await FlutterPaxPrinterUtility.start();
+
+      // Add final delay to ensure complete printing
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      print('Print status: $status');
+      setState(() {
+        _status = '¡Imagen impresa con dithering correctamente!';
+      });
+    } catch (e) {
+      print('Error printing image with dithering: $e');
+      setState(() {
+        _status = 'Image print with dithering failed: $e';
+      });
+    } finally {
+      setState(() {
+        _printing = false;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // This method is rerun every time setState is called, for instance as done
@@ -321,6 +432,17 @@ class _MyHomePageState extends State<MyHomePage> {
                         },
               ),
               const SizedBox(height: 8),
+              ElevatedButton.icon(
+                onPressed:
+                    _printing || _imageFile == null
+                        ? null
+                        : _printImageWithDithering,
+                icon: const Icon(Icons.print),
+                label:
+                    _printing
+                        ? const Text('Imprimiendo...')
+                        : const Text('Imprimir con Dithering'),
+              ),
             ],
           ),
         ),
