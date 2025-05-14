@@ -7,6 +7,7 @@ import 'package:flutter_pax_printer_utility/flutter_pax_printer_utility.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:image/image.dart' as img;
+import 'package:flutter/foundation.dart';
 
 void main() {
   runApp(const MyApp());
@@ -66,6 +67,8 @@ class _MyHomePageState extends State<MyHomePage> {
   bool _printing = false;
   String? _status;
   int _grayLevel = 4;
+  bool _useDefaultImage = false;
+  String _selectedAlgorithm = 'Floyd-Steinberg';
 
   // Definir el canal para comunicarse con el código nativo
   static const platform = MethodChannel(
@@ -78,6 +81,13 @@ class _MyHomePageState extends State<MyHomePage> {
 
     // Verificar si se compartió alguna imagen al iniciar la app
     _checkForSharedImage();
+
+    // Set default image if none is loaded
+    if (_imageFile == null) {
+      _imageFile = null; // Clear any existing file reference
+      _status = 'Imagen de prueba cargada por defecto';
+      _useDefaultImage = true; // Set flag to true when using default image
+    }
   }
 
   // Método para verificar si hay una imagen compartida
@@ -98,6 +108,7 @@ class _MyHomePageState extends State<MyHomePage> {
     setState(() {
       _imageFile = File(path);
       _status = 'Imagen recibida lista para imprimir';
+      _useDefaultImage = false; // Ensure the default image is not used
     });
   }
 
@@ -141,6 +152,8 @@ class _MyHomePageState extends State<MyHomePage> {
         setState(() {
           _imageFile = File(pickedFile.path);
           _status = 'Image selected successfully!';
+          _useDefaultImage =
+              false; // Set flag to false when a new image is selected
         });
       }
     } catch (e) {
@@ -152,7 +165,7 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   Future<void> _printImage() async {
-    if (_imageFile == null) return;
+    if (_imageFile == null && !_useDefaultImage) return;
     setState(() {
       _printing = true;
       _status = null;
@@ -175,7 +188,15 @@ class _MyHomePageState extends State<MyHomePage> {
       await FlutterPaxPrinterUtility.setGray(_grayLevel);
 
       // Read image bytes
-      Uint8List bytes = await _imageFile!.readAsBytes();
+      Uint8List bytes;
+      if (_useDefaultImage) {
+        final ByteData data = await rootBundle.load(
+          'assets/images/test_image.png',
+        );
+        bytes = data.buffer.asUint8List();
+      } else {
+        bytes = await _imageFile!.readAsBytes();
+      }
 
       // Print the bitmap with minimal delay
       print('Printing image...');
@@ -206,68 +227,58 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
-  // Add a dithering function
-  Uint8List applyDithering(Uint8List imageBytes) {
-    // Decode the image
-    img.Image? image = img.decodeImage(imageBytes);
-    if (image == null) {
-      print('Failed to decode image');
-      return imageBytes;
+  // Map slider values to different dithering algorithms
+  String _getDitheringAlgorithm(int grayLevel) {
+    switch (grayLevel) {
+      case 0:
+        return 'Floyd-Steinberg';
+      case 1:
+        return 'Atkinson';
+      case 2:
+        return 'Jarvis-Judice-Ninke';
+      case 3:
+        return 'Stucki';
+      default:
+        return 'Floyd-Steinberg';
     }
-
-    // Apply Floyd-Steinberg dithering
-    for (int y = 0; y < image.height; y++) {
-      for (int x = 0; x < image.width; x++) {
-        int oldPixel = img.getLuminance(image.getPixel(x, y));
-        int newPixel = oldPixel > 128 ? 255 : 0;
-        int quantError = oldPixel - newPixel;
-
-        image.setPixel(x, y, img.getColor(newPixel, newPixel, newPixel));
-
-        if (x + 1 < image.width) {
-          int neighbor = img.getLuminance(image.getPixel(x + 1, y));
-          neighbor = (neighbor + (quantError * 7) / 16).clamp(0, 255).toInt();
-          image.setPixel(x + 1, y, img.getColor(neighbor, neighbor, neighbor));
-        }
-        if (y + 1 < image.height) {
-          if (x > 0) {
-            int neighbor = img.getLuminance(image.getPixel(x - 1, y + 1));
-            neighbor = (neighbor + (quantError * 3) / 16).clamp(0, 255).toInt();
-            image.setPixel(
-              x - 1,
-              y + 1,
-              img.getColor(neighbor, neighbor, neighbor),
-            );
-          }
-          int neighbor = img.getLuminance(image.getPixel(x, y + 1));
-          neighbor = (neighbor + (quantError * 5) / 16).clamp(0, 255).toInt();
-          image.setPixel(x, y + 1, img.getColor(neighbor, neighbor, neighbor));
-          if (x + 1 < image.width) {
-            int neighbor = img.getLuminance(image.getPixel(x + 1, y + 1));
-            neighbor = (neighbor + (quantError * 1) / 16).clamp(0, 255).toInt();
-            image.setPixel(
-              x + 1,
-              y + 1,
-              img.getColor(neighbor, neighbor, neighbor),
-            );
-          }
-        }
-      }
-    }
-
-    // Encode the image back to Uint8List
-    return Uint8List.fromList(img.encodePng(image));
   }
 
-  // Add a new print function for dithering
-  Future<void> _printImageWithDithering() async {
-    if (_imageFile == null) return;
+  // Función para procesar la imagen en background
+  Future<Uint8List> processImageInBackground(
+    Map<String, dynamic> params,
+  ) async {
+    final Uint8List bytes = params['bytes'];
+    final String algorithm = params['algorithm'];
+
+    Uint8List ditheredBytes;
+    switch (algorithm) {
+      case 'Floyd-Steinberg':
+        ditheredBytes = applyDithering(bytes);
+        break;
+      case 'Atkinson':
+        ditheredBytes = applyAtkinsonDithering(bytes);
+        break;
+      case 'Jarvis-Judice-Ninke':
+        ditheredBytes = applyJarvisJudiceNinkeDithering(bytes);
+        break;
+      case 'Stucki':
+        ditheredBytes = applyStuckiDithering(bytes);
+        break;
+      default:
+        ditheredBytes = applyDithering(bytes);
+    }
+    return ditheredBytes;
+  }
+
+  // Show progress to the user
+  Future<void> _printImageWithProgress() async {
+    if (_imageFile == null && !_useDefaultImage) return;
     setState(() {
       _printing = true;
-      _status = null;
+      _status = 'Procesando imagen...';
     });
     try {
-      print('Initializing printer with dithering...');
+      print('Initializing printer with $_selectedAlgorithm dithering...');
       await FlutterPaxPrinterUtility.init;
 
       // Add delay after initialization
@@ -283,12 +294,25 @@ class _MyHomePageState extends State<MyHomePage> {
       // Set maximum gray level for best quality
       await FlutterPaxPrinterUtility.setGray(_grayLevel);
 
-      // Read image bytes and apply dithering
-      Uint8List bytes = await _imageFile!.readAsBytes();
-      Uint8List ditheredBytes = applyDithering(bytes);
+      // Read image bytes
+      Uint8List bytes;
+      if (_useDefaultImage) {
+        final ByteData data = await rootBundle.load(
+          'assets/images/test_image.png',
+        );
+        bytes = data.buffer.asUint8List();
+      } else {
+        bytes = await _imageFile!.readAsBytes();
+      }
+
+      // Procesar la imagen en background
+      final ditheredBytes = await compute(processImageInBackground, {
+        'bytes': bytes,
+        'algorithm': _selectedAlgorithm,
+      });
 
       // Print the bitmap with minimal delay
-      print('Printing image with dithering...');
+      print('Printing image with $_selectedAlgorithm dithering...');
       await Future.delayed(const Duration(milliseconds: 300));
       await FlutterPaxPrinterUtility.printBitmap(ditheredBytes);
       await Future.delayed(const Duration(milliseconds: 300));
@@ -302,7 +326,8 @@ class _MyHomePageState extends State<MyHomePage> {
 
       print('Print status: $status');
       setState(() {
-        _status = '¡Imagen impresa con dithering correctamente!';
+        _status =
+            '¡Imagen impresa con $_selectedAlgorithm dithering correctamente!';
       });
     } catch (e) {
       print('Error printing image with dithering: $e');
@@ -316,137 +341,525 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
-    return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
-      ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            // Column is also a layout widget. It takes a list of children and
-            // arranges them vertically. By default, it sizes itself to fit its
-            // children horizontally, and tries to be as tall as its parent.
-            //
-            // Column has various properties to control how it sizes itself and
-            // how it positions its children. Here we use mainAxisAlignment to
-            // center the children vertically; the main axis here is the vertical
-            // axis because Columns are vertical (the cross axis would be
-            // horizontal).
-            //
-            // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-            // action in the IDE, or press "p" in the console), to see the
-            // wireframe for each widget.
-            mainAxisAlignment: MainAxisAlignment.center,
+  // Widget para mostrar el loader
+  Widget _buildStatusWithLoader(String text) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+        const SizedBox(width: 12),
+        Text(text),
+      ],
+    );
+  }
+
+  // Update the _showDitheringDialog method to print immediately after selection
+  void _showDitheringDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Seleccionar Calidad de Dithering'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              _imageFile != null
-                  ? Image.file(_imageFile!, height: 200)
-                  : const Text('No se ha seleccionado ninguna imagen.'),
-              const SizedBox(height: 24),
-              if (_status == 'Imagen recibida lista para imprimir')
-                Container(
-                  decoration: BoxDecoration(
-                    color: Colors.green.shade100,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  padding: const EdgeInsets.all(10),
-                  margin: const EdgeInsets.only(bottom: 16),
-                  child: Column(
-                    children: [
-                      const Text(
-                        '¡Imagen recibida por compartir!',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      ElevatedButton.icon(
-                        onPressed: _printing ? null : _printImage,
-                        icon: const Icon(Icons.print),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                          foregroundColor: Colors.white,
-                          minimumSize: const Size.fromHeight(50),
-                        ),
-                        label:
-                            _printing
-                                ? const Text('Imprimiendo...')
-                                : const Text('Imprimir esta imagen ahora'),
-                      ),
-                    ],
-                  ),
-                ),
-              ElevatedButton.icon(
-                onPressed: _printing ? null : _pickImage,
-                icon: const Icon(Icons.photo_library),
-                label: const Text('Seleccionar imagen de la galería'),
+              ListTile(
+                title: const Text('Baja Calidad (Floyd-Steinberg)'),
+                subtitle: const Text('Mejor para imágenes con alto contraste'),
+                onTap: () {
+                  setState(() {
+                    _selectedAlgorithm = 'Floyd-Steinberg';
+                  });
+                  Navigator.of(context).pop();
+                  _printImageWithProgress(); // Print immediately
+                },
               ),
-              const SizedBox(height: 16),
-              if (_status != 'Imagen recibida lista para imprimir')
-                ElevatedButton.icon(
-                  onPressed:
-                      _printing || _imageFile == null ? null : _printImage,
-                  icon: const Icon(Icons.print),
-                  label:
-                      _printing
-                          ? const Text('Imprimiendo...')
-                          : const Text('Imprimir imagen'),
-                ),
-              const SizedBox(height: 16),
-              Text(
-                'Ajustá el nivel de negro para la impresión (más alto = más oscuro, más bajo = más claro)',
-                style: TextStyle(fontSize: 14, color: Colors.black54),
-                textAlign: TextAlign.center,
+              ListTile(
+                title: const Text('Calidad Media (Atkinson)'),
+                subtitle: const Text('Balance entre detalle y velocidad'),
+                onTap: () {
+                  setState(() {
+                    _selectedAlgorithm = 'Atkinson';
+                  });
+                  Navigator.of(context).pop();
+                  _printImageWithProgress(); // Print immediately
+                },
               ),
-              const SizedBox(height: 8),
-              Slider(
-                value: _grayLevel.toDouble(),
-                min: 0,
-                max: 4,
-                divisions: 4,
-                label: 'Nivel de negro: $_grayLevel',
-                onChanged:
-                    _printing
-                        ? null
-                        : (double value) {
-                          setState(() {
-                            _grayLevel = value.round();
-                          });
-                        },
+              ListTile(
+                title: const Text('Alta Calidad (Jarvis-Judice-Ninke)'),
+                subtitle: const Text('Mejor para imágenes con detalles finos'),
+                onTap: () {
+                  setState(() {
+                    _selectedAlgorithm = 'Jarvis-Judice-Ninke';
+                  });
+                  Navigator.of(context).pop();
+                  _printImageWithProgress(); // Print immediately
+                },
               ),
-              const SizedBox(height: 8),
-              ElevatedButton.icon(
-                onPressed:
-                    _printing || _imageFile == null
-                        ? null
-                        : _printImageWithDithering,
-                icon: const Icon(Icons.print),
-                label:
-                    _printing
-                        ? const Text('Imprimiendo...')
-                        : const Text('Imprimir con Dithering'),
+              ListTile(
+                title: const Text('Muy Alta Calidad (Stucki)'),
+                subtitle: const Text('Máximo detalle, más lento'),
+                onTap: () {
+                  setState(() {
+                    _selectedAlgorithm = 'Stucki';
+                  });
+                  Navigator.of(context).pop();
+                  _printImageWithProgress(); // Print immediately
+                },
               ),
             ],
           ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: <Widget>[
+                Text(
+                  widget.title,
+                  style: Theme.of(context).textTheme.headlineMedium,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                if (_imageFile != null || _useDefaultImage) ...[
+                  Container(
+                    constraints: BoxConstraints(
+                      maxHeight: MediaQuery.of(context).size.height * 0.4,
+                    ),
+                    child:
+                        _useDefaultImage
+                            ? Image.asset(
+                              'assets/images/test_image.png',
+                              fit: BoxFit.contain,
+                            )
+                            : Image.file(_imageFile!, fit: BoxFit.contain),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+                if (_status != null)
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.grey[200],
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    padding: const EdgeInsets.all(10),
+                    margin: const EdgeInsets.only(bottom: 16),
+                    child:
+                        _printing
+                            ? _buildStatusWithLoader(_status!)
+                            : Text(_status!),
+                  ),
+                if (_imageFile != null && !_useDefaultImage)
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.green[100],
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    padding: const EdgeInsets.all(10),
+                    margin: const EdgeInsets.only(bottom: 16),
+                    child: Column(
+                      children: [
+                        const Text(
+                          '¡Imagen recibida por compartir!',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton.icon(
+                          onPressed: _printing ? null : _printImage,
+                          icon: const Icon(Icons.print),
+                          label:
+                              _printing
+                                  ? const Text('Imprimiendo...')
+                                  : const Text('Imprimir sin Dithering'),
+                        ),
+                        const SizedBox(height: 16),
+                        ElevatedButton.icon(
+                          onPressed: _printing ? null : _showDitheringDialog,
+                          icon: const Icon(Icons.tune),
+                          label:
+                              _printing
+                                  ? const Text('Procesando...')
+                                  : const Text('Imprimir con Dithering'),
+                        ),
+                      ],
+                    ),
+                  )
+                else ...[
+                  ElevatedButton.icon(
+                    onPressed: _printing ? null : _printImage,
+                    icon: const Icon(Icons.print),
+                    label:
+                        _printing
+                            ? const Text('Imprimiendo...')
+                            : const Text('Imprimir sin Dithering'),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    onPressed: _printing ? null : _showDitheringDialog,
+                    icon: const Icon(Icons.tune),
+                    label:
+                        _printing
+                            ? const Text('Procesando...')
+                            : const Text('Imprimir con Dithering'),
+                  ),
+                ],
+                const SizedBox(height: 16),
+                Text(
+                  'Ajustá el nivel de negro para la impresión (más alto = más oscuro, más bajo = más claro)',
+                  style: TextStyle(fontSize: 14, color: Colors.black54),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                Slider(
+                  value: _grayLevel.toDouble(),
+                  min: 0,
+                  max: 4,
+                  divisions: 4,
+                  label: 'Nivel de negro: $_grayLevel',
+                  onChanged:
+                      _printing
+                          ? null
+                          : (double value) {
+                            setState(() {
+                              _grayLevel = value.round();
+                            });
+                          },
+                ),
+                const SizedBox(height: 80), // Espacio adicional para el FAB
+              ],
+            ),
+          ),
         ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _pickImage,
+        tooltip: 'Seleccionar Imagen',
+        child: const Icon(Icons.add_photo_alternate),
       ),
     );
   }
+}
+
+// Ensure all functions are properly defined
+Uint8List applyAtkinsonDithering(Uint8List imageBytes) {
+  // Decode the image
+  img.Image? image = img.decodeImage(imageBytes);
+  if (image == null) {
+    print('Failed to decode image');
+    return imageBytes;
+  }
+
+  // Apply Atkinson dithering
+  for (int y = 0; y < image.height; y++) {
+    for (int x = 0; x < image.width; x++) {
+      int oldPixel = img.getLuminance(image.getPixel(x, y));
+      int newPixel = oldPixel > 128 ? 255 : 0;
+      int quantError = oldPixel - newPixel;
+
+      image.setPixel(x, y, img.getColor(newPixel, newPixel, newPixel));
+
+      if (x + 1 < image.width) {
+        int neighbor = img.getLuminance(image.getPixel(x + 1, y));
+        neighbor = (neighbor + (quantError * 1) / 8).clamp(0, 255).toInt();
+        image.setPixel(x + 1, y, img.getColor(neighbor, neighbor, neighbor));
+      }
+      if (x + 2 < image.width) {
+        int neighbor = img.getLuminance(image.getPixel(x + 2, y));
+        neighbor = (neighbor + (quantError * 1) / 8).clamp(0, 255).toInt();
+        image.setPixel(x + 2, y, img.getColor(neighbor, neighbor, neighbor));
+      }
+      if (y + 1 < image.height) {
+        if (x > 0) {
+          int neighbor = img.getLuminance(image.getPixel(x - 1, y + 1));
+          neighbor = (neighbor + (quantError * 1) / 8).clamp(0, 255).toInt();
+          image.setPixel(
+            x - 1,
+            y + 1,
+            img.getColor(neighbor, neighbor, neighbor),
+          );
+        }
+        int neighbor = img.getLuminance(image.getPixel(x, y + 1));
+        neighbor = (neighbor + (quantError * 1) / 8).clamp(0, 255).toInt();
+        image.setPixel(x, y + 1, img.getColor(neighbor, neighbor, neighbor));
+        if (x + 1 < image.width) {
+          int neighbor = img.getLuminance(image.getPixel(x + 1, y + 1));
+          neighbor = (neighbor + (quantError * 1) / 8).clamp(0, 255).toInt();
+          image.setPixel(
+            x + 1,
+            y + 1,
+            img.getColor(neighbor, neighbor, neighbor),
+          );
+        }
+      }
+      if (y + 2 < image.height) {
+        int neighbor = img.getLuminance(image.getPixel(x, y + 2));
+        neighbor = (neighbor + (quantError * 1) / 8).clamp(0, 255).toInt();
+        image.setPixel(x, y + 2, img.getColor(neighbor, neighbor, neighbor));
+      }
+    }
+  }
+
+  // Encode the image back to Uint8List
+  return Uint8List.fromList(img.encodePng(image));
+}
+
+// Implement Jarvis, Judice, and Ninke Dithering
+Uint8List applyJarvisJudiceNinkeDithering(Uint8List imageBytes) {
+  img.Image? image = img.decodeImage(imageBytes);
+  if (image == null) {
+    print('Failed to decode image');
+    return imageBytes;
+  }
+
+  for (int y = 0; y < image.height; y++) {
+    for (int x = 0; x < image.width; x++) {
+      int oldPixel = img.getLuminance(image.getPixel(x, y));
+      int newPixel = oldPixel > 128 ? 255 : 0;
+      int quantError = oldPixel - newPixel;
+
+      image.setPixel(x, y, img.getColor(newPixel, newPixel, newPixel));
+
+      if (x + 1 < image.width) {
+        int neighbor = img.getLuminance(image.getPixel(x + 1, y));
+        neighbor = (neighbor + (quantError * 7) / 48).clamp(0, 255).toInt();
+        image.setPixel(x + 1, y, img.getColor(neighbor, neighbor, neighbor));
+      }
+      if (x + 2 < image.width) {
+        int neighbor = img.getLuminance(image.getPixel(x + 2, y));
+        neighbor = (neighbor + (quantError * 5) / 48).clamp(0, 255).toInt();
+        image.setPixel(x + 2, y, img.getColor(neighbor, neighbor, neighbor));
+      }
+      if (y + 1 < image.height) {
+        if (x > 0) {
+          int neighbor = img.getLuminance(image.getPixel(x - 1, y + 1));
+          neighbor = (neighbor + (quantError * 3) / 48).clamp(0, 255).toInt();
+          image.setPixel(
+            x - 1,
+            y + 1,
+            img.getColor(neighbor, neighbor, neighbor),
+          );
+        }
+        int neighbor = img.getLuminance(image.getPixel(x, y + 1));
+        neighbor = (neighbor + (quantError * 5) / 48).clamp(0, 255).toInt();
+        image.setPixel(x, y + 1, img.getColor(neighbor, neighbor, neighbor));
+        if (x + 1 < image.width) {
+          int neighbor = img.getLuminance(image.getPixel(x + 1, y + 1));
+          neighbor = (neighbor + (quantError * 7) / 48).clamp(0, 255).toInt();
+          image.setPixel(
+            x + 1,
+            y + 1,
+            img.getColor(neighbor, neighbor, neighbor),
+          );
+        }
+        if (x + 2 < image.width) {
+          int neighbor = img.getLuminance(image.getPixel(x + 2, y + 1));
+          neighbor = (neighbor + (quantError * 5) / 48).clamp(0, 255).toInt();
+          image.setPixel(
+            x + 2,
+            y + 1,
+            img.getColor(neighbor, neighbor, neighbor),
+          );
+        }
+      }
+      if (y + 2 < image.height) {
+        if (x > 0) {
+          int neighbor = img.getLuminance(image.getPixel(x - 1, y + 2));
+          neighbor = (neighbor + (quantError * 1) / 48).clamp(0, 255).toInt();
+          image.setPixel(
+            x - 1,
+            y + 2,
+            img.getColor(neighbor, neighbor, neighbor),
+          );
+        }
+        int neighbor = img.getLuminance(image.getPixel(x, y + 2));
+        neighbor = (neighbor + (quantError * 3) / 48).clamp(0, 255).toInt();
+        image.setPixel(x, y + 2, img.getColor(neighbor, neighbor, neighbor));
+        if (x + 1 < image.width) {
+          int neighbor = img.getLuminance(image.getPixel(x + 1, y + 2));
+          neighbor = (neighbor + (quantError * 5) / 48).clamp(0, 255).toInt();
+          image.setPixel(
+            x + 1,
+            y + 2,
+            img.getColor(neighbor, neighbor, neighbor),
+          );
+        }
+        if (x + 2 < image.width) {
+          int neighbor = img.getLuminance(image.getPixel(x + 2, y + 2));
+          neighbor = (neighbor + (quantError * 3) / 48).clamp(0, 255).toInt();
+          image.setPixel(
+            x + 2,
+            y + 2,
+            img.getColor(neighbor, neighbor, neighbor),
+          );
+        }
+      }
+    }
+  }
+
+  return Uint8List.fromList(img.encodePng(image));
+}
+
+// Implement Stucki Dithering
+Uint8List applyStuckiDithering(Uint8List imageBytes) {
+  img.Image? image = img.decodeImage(imageBytes);
+  if (image == null) {
+    print('Failed to decode image');
+    return imageBytes;
+  }
+
+  for (int y = 0; y < image.height; y++) {
+    for (int x = 0; x < image.width; x++) {
+      int oldPixel = img.getLuminance(image.getPixel(x, y));
+      int newPixel = oldPixel > 128 ? 255 : 0;
+      int quantError = oldPixel - newPixel;
+
+      image.setPixel(x, y, img.getColor(newPixel, newPixel, newPixel));
+
+      if (x + 1 < image.width) {
+        int neighbor = img.getLuminance(image.getPixel(x + 1, y));
+        neighbor = (neighbor + (quantError * 8) / 42).clamp(0, 255).toInt();
+        image.setPixel(x + 1, y, img.getColor(neighbor, neighbor, neighbor));
+      }
+      if (x + 2 < image.width) {
+        int neighbor = img.getLuminance(image.getPixel(x + 2, y));
+        neighbor = (neighbor + (quantError * 4) / 42).clamp(0, 255).toInt();
+        image.setPixel(x + 2, y, img.getColor(neighbor, neighbor, neighbor));
+      }
+      if (y + 1 < image.height) {
+        if (x > 0) {
+          int neighbor = img.getLuminance(image.getPixel(x - 1, y + 1));
+          neighbor = (neighbor + (quantError * 2) / 42).clamp(0, 255).toInt();
+          image.setPixel(
+            x - 1,
+            y + 1,
+            img.getColor(neighbor, neighbor, neighbor),
+          );
+        }
+        int neighbor = img.getLuminance(image.getPixel(x, y + 1));
+        neighbor = (neighbor + (quantError * 4) / 42).clamp(0, 255).toInt();
+        image.setPixel(x, y + 1, img.getColor(neighbor, neighbor, neighbor));
+        if (x + 1 < image.width) {
+          int neighbor = img.getLuminance(image.getPixel(x + 1, y + 1));
+          neighbor = (neighbor + (quantError * 8) / 42).clamp(0, 255).toInt();
+          image.setPixel(
+            x + 1,
+            y + 1,
+            img.getColor(neighbor, neighbor, neighbor),
+          );
+        }
+        if (x + 2 < image.width) {
+          int neighbor = img.getLuminance(image.getPixel(x + 2, y + 1));
+          neighbor = (neighbor + (quantError * 4) / 42).clamp(0, 255).toInt();
+          image.setPixel(
+            x + 2,
+            y + 1,
+            img.getColor(neighbor, neighbor, neighbor),
+          );
+        }
+      }
+      if (y + 2 < image.height) {
+        if (x > 0) {
+          int neighbor = img.getLuminance(image.getPixel(x - 1, y + 2));
+          neighbor = (neighbor + (quantError * 1) / 42).clamp(0, 255).toInt();
+          image.setPixel(
+            x - 1,
+            y + 2,
+            img.getColor(neighbor, neighbor, neighbor),
+          );
+        }
+        int neighbor = img.getLuminance(image.getPixel(x, y + 2));
+        neighbor = (neighbor + (quantError * 2) / 42).clamp(0, 255).toInt();
+        image.setPixel(x, y + 2, img.getColor(neighbor, neighbor, neighbor));
+        if (x + 1 < image.width) {
+          int neighbor = img.getLuminance(image.getPixel(x + 1, y + 2));
+          neighbor = (neighbor + (quantError * 4) / 42).clamp(0, 255).toInt();
+          image.setPixel(
+            x + 1,
+            y + 2,
+            img.getColor(neighbor, neighbor, neighbor),
+          );
+        }
+        if (x + 2 < image.width) {
+          int neighbor = img.getLuminance(image.getPixel(x + 2, y + 2));
+          neighbor = (neighbor + (quantError * 2) / 42).clamp(0, 255).toInt();
+          image.setPixel(
+            x + 2,
+            y + 2,
+            img.getColor(neighbor, neighbor, neighbor),
+          );
+        }
+      }
+    }
+  }
+
+  return Uint8List.fromList(img.encodePng(image));
+}
+
+// Add a dithering function
+Uint8List applyDithering(Uint8List imageBytes, {int threshold = 128}) {
+  // Decode the image
+  img.Image? image = img.decodeImage(imageBytes);
+  if (image == null) {
+    print('Failed to decode image');
+    return imageBytes;
+  }
+
+  // Apply Floyd-Steinberg dithering with adjustable threshold
+  for (int y = 0; y < image.height; y++) {
+    for (int x = 0; x < image.width; x++) {
+      int oldPixel = img.getLuminance(image.getPixel(x, y));
+      int newPixel = oldPixel > threshold ? 255 : 0;
+      int quantError = oldPixel - newPixel;
+
+      image.setPixel(x, y, img.getColor(newPixel, newPixel, newPixel));
+
+      if (x + 1 < image.width) {
+        int neighbor = img.getLuminance(image.getPixel(x + 1, y));
+        neighbor = (neighbor + (quantError * 7) / 16).clamp(0, 255).toInt();
+        image.setPixel(x + 1, y, img.getColor(neighbor, neighbor, neighbor));
+      }
+      if (y + 1 < image.height) {
+        if (x > 0) {
+          int neighbor = img.getLuminance(image.getPixel(x - 1, y + 1));
+          neighbor = (neighbor + (quantError * 3) / 16).clamp(0, 255).toInt();
+          image.setPixel(
+            x - 1,
+            y + 1,
+            img.getColor(neighbor, neighbor, neighbor),
+          );
+        }
+        int neighbor = img.getLuminance(image.getPixel(x, y + 1));
+        neighbor = (neighbor + (quantError * 5) / 16).clamp(0, 255).toInt();
+        image.setPixel(x, y + 1, img.getColor(neighbor, neighbor, neighbor));
+        if (x + 1 < image.width) {
+          int neighbor = img.getLuminance(image.getPixel(x + 1, y + 1));
+          neighbor = (neighbor + (quantError * 1) / 16).clamp(0, 255).toInt();
+          image.setPixel(
+            x + 1,
+            y + 1,
+            img.getColor(neighbor, neighbor, neighbor),
+          );
+        }
+      }
+    }
+  }
+
+  // Encode the image back to Uint8List
+  return Uint8List.fromList(img.encodePng(image));
 }
