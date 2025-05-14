@@ -7,7 +7,6 @@ import 'package:flutter_pax_printer_utility/flutter_pax_printer_utility.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:image/image.dart' as img;
-import 'package:flutter/foundation.dart';
 
 void main() {
   runApp(const MyApp());
@@ -243,33 +242,6 @@ class _MyHomePageState extends State<MyHomePage> {
     }
   }
 
-  // Función para procesar la imagen en background
-  Future<Uint8List> processImageInBackground(
-    Map<String, dynamic> params,
-  ) async {
-    final Uint8List bytes = params['bytes'];
-    final String algorithm = params['algorithm'];
-
-    Uint8List ditheredBytes;
-    switch (algorithm) {
-      case 'Floyd-Steinberg':
-        ditheredBytes = applyDithering(bytes);
-        break;
-      case 'Atkinson':
-        ditheredBytes = applyAtkinsonDithering(bytes);
-        break;
-      case 'Jarvis-Judice-Ninke':
-        ditheredBytes = applyJarvisJudiceNinkeDithering(bytes);
-        break;
-      case 'Stucki':
-        ditheredBytes = applyStuckiDithering(bytes);
-        break;
-      default:
-        ditheredBytes = applyDithering(bytes);
-    }
-    return ditheredBytes;
-  }
-
   // Show progress to the user
   Future<void> _printImageWithProgress() async {
     if (_imageFile == null && !_useDefaultImage) return;
@@ -294,7 +266,7 @@ class _MyHomePageState extends State<MyHomePage> {
       // Set maximum gray level for best quality
       await FlutterPaxPrinterUtility.setGray(_grayLevel);
 
-      // Read image bytes
+      // Read image bytes and apply dithering
       Uint8List bytes;
       if (_useDefaultImage) {
         final ByteData data = await rootBundle.load(
@@ -304,12 +276,23 @@ class _MyHomePageState extends State<MyHomePage> {
       } else {
         bytes = await _imageFile!.readAsBytes();
       }
-
-      // Procesar la imagen en background
-      final ditheredBytes = await compute(processImageInBackground, {
-        'bytes': bytes,
-        'algorithm': _selectedAlgorithm,
-      });
+      Uint8List ditheredBytes;
+      switch (_selectedAlgorithm) {
+        case 'Floyd-Steinberg':
+          ditheredBytes = applyDithering(bytes);
+          break;
+        case 'Atkinson':
+          ditheredBytes = applyAtkinsonDithering(bytes);
+          break;
+        case 'Jarvis-Judice-Ninke':
+          ditheredBytes = applyJarvisJudiceNinkeDithering(bytes);
+          break;
+        case 'Stucki':
+          ditheredBytes = applyStuckiDithering(bytes);
+          break;
+        default:
+          ditheredBytes = applyDithering(bytes);
+      }
 
       // Print the bitmap with minimal delay
       print('Printing image with $_selectedAlgorithm dithering...');
@@ -339,22 +322,6 @@ class _MyHomePageState extends State<MyHomePage> {
         _printing = false;
       });
     }
-  }
-
-  // Widget para mostrar el loader
-  Widget _buildStatusWithLoader(String text) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        const SizedBox(
-          width: 20,
-          height: 20,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
-        const SizedBox(width: 12),
-        Text(text),
-      ],
-    );
   }
 
   // Update the _showDitheringDialog method to print immediately after selection
@@ -457,10 +424,7 @@ class _MyHomePageState extends State<MyHomePage> {
                     ),
                     padding: const EdgeInsets.all(10),
                     margin: const EdgeInsets.only(bottom: 16),
-                    child:
-                        _printing
-                            ? _buildStatusWithLoader(_status!)
-                            : Text(_status!),
+                    child: Text(_status!),
                   ),
                 if (_imageFile != null && !_useDefaultImage)
                   Container(
